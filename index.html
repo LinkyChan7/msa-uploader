@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IMASEN File Uploader</title>
+    <title>IMASEN File Uploader System</title>
     <script src="./libs/react.min.js"></script>
     <script src="./libs/react-dom.min.js"></script>
     <script src="./libs/three.min.js"></script>
@@ -12,32 +12,31 @@
     <script src="./libs/GLTFLoader.js"></script>
     <script src="./libs/peerjs.min.js"></script>
     
-
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #adc5d8; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
-        #ui-layer { position: relative; z-index: 2; pointer-events: none; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; padding: 40px; color: #76563d; }
+        #ui-layer { position: relative; z-index: 2; pointer-events: none; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; padding: 40px; color: #76563d; box-sizing: border-box; }
         .upload-card { 
-            pointer-events: auto; background: rgba(196, 198, 198, 0.3); backdrop-filter: blur(15px);
-            padding: 30px; border-radius: 24px; border: 1px solid rgba(162,133,105,0.1); width: 350px;
+            pointer-events: auto; background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(15px);
+            padding: 30px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.2); width: 350px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
         }
-        .category-label { font-size: 24px; font-weight: bold; color: #a28569; margin-bottom: 10px; text-transform: uppercase; }
-        .server-status { font-size: 12px; color: #2d5a27; margin-bottom: 10px; }
-        input[type="file"] { background: rgba(106, 58, 14, 0.3); border: none; padding: 10px; width: 100%; border-radius: 8px; color: white; margin: 15px 0; }
+        .category-label { font-size: 24px; font-weight: bold; color: #76563d; margin-bottom: 5px; text-transform: uppercase; }
+        .server-status { font-size: 13px; color: #2d5a27; font-weight: 500; margin-bottom: 15px; }
+        input[type="file"] { background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(0,0,0,0.1); padding: 10px; width: 100%; border-radius: 8px; color: #333; margin: 15px 0; box-sizing: border-box; }
         button { 
             width: 100%; padding: 15px; border-radius: 12px; border: none; 
             background: linear-gradient(45deg, #516f8e, #00c0aa); color: white; font-weight: bold; cursor: pointer;
-            transition: transform 0.2s;
+            transition: transform 0.2s, background 0.2s;
         }
-        button:disabled { background: #999; cursor: not-allowed; }
+        button:disabled { background: #999 !important; cursor: not-allowed; }
         button:active { transform: scale(0.95); }
-        .status-bar { height: 4px; background: #333; margin-top: 20px; border-radius: 2px; overflow: hidden; }
-        .status-fill { height: 100%; background: #00d4ff; width: 0%; transition: width 0.3s; }
+        .status-bar { height: 6px; background: rgba(0,0,0,0.1); margin-top: 20px; border-radius: 3px; overflow: hidden; }
+        .status-fill { height: 100%; background: #00c0aa; width: 0%; transition: width 0.3s ease-out; }
     </style>
 </head>
 <body>
 
-<div id="canvas-container"></div>
 <div id="root"></div>
 
 <script type="text/babel">
@@ -56,27 +55,24 @@
 
             const loader = new THREE.GLTFLoader();
 
-            // แสงไฟแบบ Cinematic
-            const light = new THREE.DirectionalLight(0xffffff, 2); // new THREE.PointLight(0x00d4ff, 10, 100);
+            // แสงไฟระบบ Cinematic สำหรับส่องโมเดลกระเป๋า
+            const light = new THREE.DirectionalLight(0xffffff, 2);
             light.position.set(10, 10, 10);
             scene.add(light);
             scene.add(new THREE.AmbientLight(0xffffff, 1.8));
 
-            // สร้างกระเป๋าเอกสาร (Briefcase) เป็น Box Primitives ง่ายๆ
             const categories = ['qt', 'po', 'inv'];
-            const models = {}; // const briefcases = [];
+            const models = {};
 
             categories.forEach((cat, i) => {
-                
                 loader.load(`./models/${cat}.glb`, 
                     (gltf) => {
                         const model = gltf.scene;
-                        model.position.x = (i - 1) * 9; // วางห่างกัน
+                        model.position.x = (i - 1) * 9; // วางระยะห่างโมเดลกระเป๋าให้เหมาะสม
                         model.position.y = 1.5;
                         model.userData = { id: cat };
                         scene.add(model);
                         models[cat] = model;
-                        console.log(`Loaded: ${cat}`);
                         model.scale.set(8, 8, 8);
                     },
                     undefined,
@@ -88,7 +84,7 @@
 
             camera.position.z = 10;
 
-            // Animation Loop
+            // Animation Loop & คำนวณตำแหน่งจาก 3D โลกจริงมายังพิกัด 2D หน้าจอเบราว์เซอร์
             const animate = () => {
                 requestAnimationFrame(animate);
                 
@@ -98,12 +94,11 @@
                         m.rotation.y += 0.01;
                         m.scale.set(10, 10, 10);
                         
-                        // --- คำนวณตำแหน่ง 3D ไปยัง 2D Screen ---
                         const vector = m.position.clone();
                         vector.project(camera);
                         const x = (vector.x + 1) * window.innerWidth / 2;
                         const y = -(vector.y - 1) * window.innerHeight / 2;
-                        onPosUpdate({ x, y }); // ส่งค่ากลับไปให้ React UI
+                        onPosUpdate({ x, y }); 
                     } else {
                         m.rotation.y *= 0.9;
                         m.scale.set(8, 8, 8);
@@ -113,7 +108,7 @@
             };
             animate();
 
-            // Raycaster สำหรับคลิกเลือกกระเป๋า
+            // ระบบตรวจจับการคลิกเลือกโมเดลกระเป๋าเอกสาร 3 มิติ
             const raycaster = new THREE.Raycaster();
             const mouse = new THREE.Vector2();
 
@@ -124,15 +119,19 @@
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 if (intersects.length > 0) {
                     let obj = intersects[0].object;
-                    while(obj.parent && !obj.userData.id) obj = obj.parent; // ไล่หา ID ในกรณีเป็นโมเดลซับซ้อน
+                    while(obj.parent && !obj.userData.id) obj = obj.parent; 
                     if(obj.userData.id) onSelect(obj.userData.id);
                 }
             };
 
             window.addEventListener('click', onClick);
+            
+            // Cleanup เคลียร์แรมเมื่อจบการทำงานคอมโพเนนต์
             return () => {
-                window.addEventListener('click', onClick);
-                mountRef.current.removeChild(renderer.domElement);
+                window.removeEventListener('click', onClick);
+                if (mountRef.current && renderer.domElement) {
+                    mountRef.current.removeChild(renderer.domElement);
+                }
             }
         }, [selectedCategory]);
 
@@ -142,73 +141,84 @@
     // --- ส่วนของ UI React ---
     const App = () => {
         const [category, setCategory] = useState('po');
-        const [uiPos, setUiPos] = useState({ x: window.innerWidth/2, y: window.innerHeight/2 }); // const [uiPos, setUiPos] = useState({ x: 0, y: 0 });
-        const [status, setStatus] = useState("กำลังเชื่อมต่อเซิร์ฟเวอร์...");
+        const [uiPos, setUiPos] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 }); 
+        const [status, setStatus] = useState("⏳ กำลังเชื่อมต่อเซิร์ฟเวอร์...");
         const [progress, setProgress] = useState(0);
         const [uploading, setUploading] = useState(false);
-        const peerRef = useRef(null);
-        const connRef = useRef(null);
+        const wsRef = useRef(null);
 
         useEffect(() => {
-            // สร้าง Peer สำหรับผู้ใช้งาน
-            const peer = new Peer();
-            peerRef.current = peer;
+            // ต่อสายตรงเข้าเซิร์ฟเวอร์ผ่านระบบท่อดักความเร็วสูง WebSocket 
+            const ws = new WebSocket('ws://localhost:8080');
+            wsRef.current = ws;
 
-            peer.on('open', () => {
-                // เชื่อมต่อไปยัง Server ID ของคุณ
-                const conn = peer.connect('MSA-SERVER-ID-2026');
-                connRef.current = conn;
+            ws.onopen = () => {
+                setStatus("✅ เชื่อมต่อเซิร์ฟเวอร์สำเร็จ");
+            };
 
-                conn.on('open', () => setStatus("✅ เชื่อมต่อเซิร์ฟเวอร์สำเร็จ"));
-                conn.on('data', (data) => {
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'STATUS') {
                     setUploading(false);
                     setProgress(0);
-                    alert(data.msg);
                     setStatus("✅ " + data.msg);
-                });
-                conn.on('error', () => setStatus("❌ การเชื่อมต่อขัดข้อง"));
-            });
+                    alert(data.msg);
+                }
+            };
 
-            return () => peer.destroy();
+            ws.onerror = () => {
+                setStatus("❌ ระบบโครงข่ายขัดข้อง");
+            };
+
+            ws.onclose = () => {
+                setStatus("❌ เซิร์ฟเวอร์ปิดการเชื่อมต่อ");
+            };
+
+            return () => {
+                if (wsRef.current) wsRef.current.close();
+            };
         }, []);
         
         const handleUpload = async () => {
-            const file = document.getElementById('fileInput').files[0];
-            if (!file) return alert("กรุณาเลือกไฟล์");
-            if (!connRef.current) return alert("ยังไม่ได้เชื่อมต่อกับเซิร์ฟเวอร์");
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput ? fileInput.files[0] : null;
+            
+            if (!file) return alert("กรุณาเลือกไฟล์ PDF ก่อนทำการส่ง");
+            if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+                return alert("ไม่สามารถส่งไฟล์ได้ เนื่องจากยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์");
+            }
 
             setUploading(true);
-            setStatus("🚀 กำลังส่งไฟล์...");
-            setProgress(30);
+            setStatus("🚀 กำลังส่งไฟล์ดิจิทัลไปยังระบบจัดเก็บ...");
+            setProgress(40);
 
-            const arrayBuffer = await file.arrayBuffer();
-            
-            connRef.current.send({
-                type: 'UPLOAD',
-                category: category,
-                fileName: file.name,
-                fileData: arrayBuffer
-            });
+            try {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    // แปลงไฟล์เป็น Base64 String เพื่อความชัวร์ในการส่งผ่านท่อระบบเครือข่าย
+                    const base64Data = reader.result.split(',')[1];
+                    setProgress(80);
+                    
+                    wsRef.current.send(JSON.stringify({
+                        type: 'UPLOAD',
+                        category: category,
+                        fileName: file.name,
+                        fileData: base64Data
+                    }));
 
-            /* // อ่านไฟล์เป็นก้อนข้อมูล (Blob/ArrayBuffer)
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                conn.send({
-                    type: 'UPLOAD',
-                    category: category,
-                    fileName: file.name,
-                    fileData: e.target.result // ข้อมูลไฟล์ดิบ
-                });
-                alert("ส่งไฟล์สำเร็จ!"); 
-            };
-            reader.readAsArrayBuffer(file); */
-
-            setProgress(100);
-            document.getElementById('fileInput').value = ""; // Reset input
+                    setProgress(100);
+                    if (fileInput) fileInput.value = ""; 
+                };
+                reader.readAsDataURL(file);
+            } catch (error) {
+                setUploading(false);
+                setProgress(0);
+                setStatus("❌ อัปโหลดล้มเหลว");
+                alert("เกิดข้อผิดพลาด: " + error.message);
+            }
         };
       
-            
-        const catNames = { qt: 'Quotation', po: 'Purchase Order', inv: 'Invoice' };
+        const catNames = { qt: 'Quotation (ใบเสนอราคา)', po: 'Purchase Order (ใบสั่งซื้อ)', inv: 'Invoice (ใบแจ้งหนี้)' };
 
         return (
             <>
@@ -221,23 +231,26 @@
                 </div>
                 <div id="ui-layer">
                     <div className="header">
-                        <h1>IMASEN FILE SYSTEM</h1>
-                        <p>เลือกประเภทกระเป๋าเอกสาร เพื่อเลือกหมวดหมู่เอกสาร</p>
+                        <h1 style={{ margin: '0 0 5px 0', fontSize: '28px' }}>IMASEN FILE SYSTEM</h1>
+                        <p style={{ margin: 0, opacity: 0.8 }}>คลิกเลือกประเภทกระเป๋าเอกสาร 3D เพื่อเปลี่ยนหมวดหมู่จัดเก็บเอกสาร</p>
                     </div>
                     
                     <div className="upload-card" style={{
                         position: 'absolute',
                         left: `${uiPos.x}px`,
-                        top: `${uiPos.y + 160}px`, // ให้เยื้องลงมาใต้กระเป๋า
+                        top: `${uiPos.y + 140}px`, 
                         transform: 'translateX(-50%)',
-                        transition: 'all 0.1s ease-out'
+                        transition: 'all 0.05s ease-out'
                     }}>
                         <div className="category-label">{catNames[category]}</div>
-                        <div className="server-status">{status}</div>
+                        <div className="server-status" style={{ color: status.includes('❌') ? '#cc0000' : (status.includes('✅') ? '#2d5a27' : '#76563d') }}>
+                            {status}
+                        </div>
                         <input type="file" id="fileInput" accept=".pdf" />
-                        <button onClick={handleUpload} disabled={uploading}>
-                            {uploading ? 'กำลังส่ง...' : 'SEND TO IMASEN'}
+                        <button onClick={handleUpload} disabled={uploading || !status.includes('✅')}>
+                            {uploading ? 'กำลังส่งข้อมูล...' : 'SEND TO IMASEN'}
                         </button>
+                        
                         {uploading && (
                             <div className="status-bar">
                                 <div className="status-fill" style={{ width: `${progress}%` }}></div>
