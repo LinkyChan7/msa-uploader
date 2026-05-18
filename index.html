@@ -149,7 +149,7 @@
 
         useEffect(() => {
             // ต่อสายตรงเข้าเซิร์ฟเวอร์ผ่านระบบท่อดักความเร็วสูง WebSocket 
-            const ws = new WebSocket('ws://localhost:8080');
+            const ws = new WebSocket('ws://192.168.1.70:8080');
             wsRef.current = ws;
 
             ws.onopen = () => {
