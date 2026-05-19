@@ -145,18 +145,26 @@
         const [status, setStatus] = useState("⏳ กำลังเชื่อมต่อเซิร์ฟเวอร์...");
         const [progress, setProgress] = useState(0);
         const [uploading, setUploading] = useState(false);
-        const wsRef = useRef(null);
+        const pcRef = useRef(null);
+        const dcRef = useRef(null);
 
         useEffect(() => {
             // ต่อสายตรงเข้าเซิร์ฟเวอร์ผ่านระบบท่อดักความเร็วสูง WebSocket 
-            const ws = new WebSocket('ws://192.168.1.70:8080');
-            wsRef.current = ws;
+            const ws = new WebSocket('ws://msa-uploader.ddns.net:3000');
+            // สร้างท่อ WebRTC บนบราวเซอร์
+            const pc = new RTCPeerConnection({ iceServers: [] });
+            pcRef.current = pc;
 
-            ws.onopen = () => {
-                setStatus("✅ เชื่อมต่อเซิร์ฟเวอร์สำเร็จ");
+            // สร้าง Data Channel สำหรับยิงไฟล์ตรงเข้าหาเซิร์ฟเวอร์
+            const dc = pc.createDataChannel('fileChannel');
+            dcRef.current = dc;
+
+            dc.onopen = () => {
+                setStatus("✅ เชื่อมต่อ P2P สำเร็จ");
+                ws.close(); // ปิดท่อสับสัญญาณทิ้งทันทีเพราะคุยตรงได้แล้ว!
             };
 
-            ws.onmessage = (event) => {
+            dc.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.type === 'STATUS') {
                     setUploading(false);
@@ -166,16 +174,38 @@
                 }
             };
 
-            ws.onerror = () => {
-                setStatus("❌ ระบบโครงข่ายขัดข้อง");
+            pc.onicecandidate = (event) => {
+                if (event.candidate && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'CANDIDATE', candidate: event.candidate.candidate, mid: event.candidate.sdpMid }));
+                }
             };
 
-            ws.onclose = () => {
-                setStatus("❌ เซิร์ฟเวอร์ปิดการเชื่อมต่อ");
+            ws.onmessage = async (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'SIGNAL') {
+                    await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.sdpType, sdp: msg.sdp }));
+                    if (msg.sdpType === 'offer') {
+                        const answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+                        ws.send(JSON.stringify({ type: 'SIGNAL', sdp: answer.sdp, sdpType: 'answer' }));
+                    }
+                } else if (msg.type === 'CANDIDATE') {
+                    await pc.addIceCandidate(new RTCIceCandidate({ candidate: msg.candidate, sdpMid: msg.mid }));
+                }
             };
+
+            // สร้างคำขอเชื่อมต่อส่งไปหาเซิร์ฟเวอร์
+            ws.onopen = async () => {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                ws.send(JSON.stringify({ type: 'SIGNAL', sdp: offer.sdp, sdpType: 'offer' }));
+            };
+
+            ws.onerror = () => { if(!dcRef.current || dcRef.current.readyState !== 'open') setStatus("❌ ระบบโครงข่ายขัดข้อง"); };
+            ws.onclose = () => { if(!dcRef.current || dcRef.current.readyState !== 'open') setStatus("❌ เซิร์ฟเวอร์ปิดสัญญาณ"); };
 
             return () => {
-                if (wsRef.current) wsRef.current.close();
+                if (pcRef.current) pcRef.current.close();
             };
         }, []);
         
@@ -183,23 +213,23 @@
             const fileInput = document.getElementById('fileInput');
             const file = fileInput ? fileInput.files[0] : null;
             
-            if (!file) return alert("กรุณาเลือกไฟล์ PDF ก่อนทำการส่ง");
-            if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-                return alert("ไม่สามารถส่งไฟล์ได้ เนื่องจากยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์");
+            if (!file) return alert("กรุณาเลือกไฟล์ PDF ที่ต้องการส่ง");
+            if (!dcRef.current || dcRef.current.readyState !== 'open') {
+                return alert("ไม่สามารถส่งไฟล์ได้ เนื่องจากการเชื่อมต่อหลุด");
             }
 
             setUploading(true);
-            setStatus("🚀 กำลังส่งไฟล์ดิจิทัลไปยังระบบจัดเก็บ...");
-            setProgress(40);
+            setStatus("🚀 กำลังส่งไฟล์ตรงเข้าหาเซิร์ฟเวอร์...");
+            setProgress(50);
 
             try {
                 const reader = new FileReader();
                 reader.onload = () => {
-                    // แปลงไฟล์เป็น Base64 String เพื่อความชัวร์ในการส่งผ่านท่อระบบเครือข่าย
                     const base64Data = reader.result.split(',')[1];
-                    setProgress(80);
+                    setProgress(90);
                     
-                    wsRef.current.send(JSON.stringify({
+                    // ยิงข้อมูลไฟล์ข้ามผ่าน Data Channel ตรงๆ โดยไม่ผ่านเซิร์ฟเวอร์กลางใดๆ
+                    dcRef.current.send(JSON.stringify({
                         type: 'UPLOAD',
                         category: category,
                         fileName: file.name,
