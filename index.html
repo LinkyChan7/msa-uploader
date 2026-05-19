@@ -153,7 +153,7 @@
 
         useEffect(() => {
             // ต่อสายตรงเข้าเซิร์ฟเวอร์ผ่าน DDNS และพอร์ต 8080 ใหม่ของคุณ 
-            const ws = new WebSocket('wss://imasen-api.msa-sol.com');
+            const ws = new WebSocket('wss://discourse-dubbed-unsafe.ngrok-free.dev');
             const pc = new RTCPeerConnection({ iceServers: [] });
             pcRef.current = pc;
 
