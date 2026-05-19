@@ -10,8 +10,6 @@
     <script src="./libs/babel.min.js"></script>
     <script src="./libs/gsap.min.js"></script>
     <script src="./libs/GLTFLoader.js"></script>
-    <script src="./libs/peerjs.min.js"></script>
-    
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #adc5d8; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
@@ -22,7 +20,7 @@
             box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
         }
         .category-label { font-size: 24px; font-weight: bold; color: #76563d; margin-bottom: 5px; text-transform: uppercase; }
-        .server-status { font-size: 13px; color: #2d5a27; font-weight: 500; margin-bottom: 15px; }
+        .server-status { font-size: 13px; font-weight: 500; margin-bottom: 15px; }
         input[type="file"] { background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(0,0,0,0.1); padding: 10px; width: 100%; border-radius: 8px; color: #333; margin: 15px 0; box-sizing: border-box; }
         button { 
             width: 100%; padding: 15px; border-radius: 12px; border: none; 
@@ -72,7 +70,7 @@
                         model.position.y = 1.5;
                         model.userData = { id: cat };
                         scene.add(model);
-                        models[cat] = model;
+                        models[cat] = model; // บันทึกลง Object เมื่อโหลดเสร็จแล้วจริง ๆ
                         model.scale.set(8, 8, 8);
                     },
                     undefined,
@@ -84,16 +82,20 @@
 
             camera.position.z = 10;
 
-            // Animation Loop & คำนวณตำแหน่งจาก 3D โลกจริงมายังพิกัด 2D หน้าจอเบราว์เซอร์
+            // Animation Loop ปรับปรุงใหม่เพื่อป้องกันการพัง (Crash)
+            let animationFrameId;
             const animate = () => {
-                requestAnimationFrame(animate);
+                animationFrameId = requestAnimationFrame(animate);
                 
-                Object.keys(models).forEach(key => {
+                categories.forEach(key => {
                     const m = models[key];
+                    if (!m) return; // 🛡️ ดักพัง: ถ้าโมเดลชิ้นนี้ยังโหลดไม่เสร็จ ให้ข้ามลูปนี้ไปก่อน
+                    
                     if (key === selectedCategory) {
                         m.rotation.y += 0.01;
                         m.scale.set(10, 10, 10);
                         
+                        // คำนวณพิกัด 3D ออกมาเป็น 2D หน้าจอเบราว์เซอร์
                         const vector = m.position.clone();
                         vector.project(camera);
                         const x = (vector.x + 1) * window.innerWidth / 2;
@@ -126,9 +128,10 @@
 
             window.addEventListener('click', onClick);
             
-            // Cleanup เคลียร์แรมเมื่อจบการทำงานคอมโพเนนต์
+            // Cleanup เคลียร์แรมและหยุดแอนิเมชันให้หมดเมื่อเปลี่ยน Component
             return () => {
                 window.removeEventListener('click', onClick);
+                cancelAnimationFrame(animationFrameId);
                 if (mountRef.current && renderer.domElement) {
                     mountRef.current.removeChild(renderer.domElement);
                 }
@@ -149,28 +152,30 @@
         const dcRef = useRef(null);
 
         useEffect(() => {
-            // ต่อสายตรงเข้าเซิร์ฟเวอร์ผ่านระบบท่อดักความเร็วสูง WebSocket 
+            // ต่อสายตรงเข้าเซิร์ฟเวอร์ผ่าน DDNS และพอร์ต 3000 ใหม่ของคุณ
             const ws = new WebSocket('ws://msa-uploader.ddns.net:3000');
-            // สร้างท่อ WebRTC บนบราวเซอร์
             const pc = new RTCPeerConnection({ iceServers: [] });
             pcRef.current = pc;
 
-            // สร้าง Data Channel สำหรับยิงไฟล์ตรงเข้าหาเซิร์ฟเวอร์
             const dc = pc.createDataChannel('fileChannel');
             dcRef.current = dc;
 
             dc.onopen = () => {
                 setStatus("✅ เชื่อมต่อ P2P สำเร็จ");
-                ws.close(); // ปิดท่อสับสัญญาณทิ้งทันทีเพราะคุยตรงได้แล้ว!
+                ws.close(); // ตัดสายคนสลับสายทิ้งทันทีเพราะจับคู่สำเร็จแล้ว
             };
 
             dc.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'STATUS') {
-                    setUploading(false);
-                    setProgress(0);
-                    setStatus("✅ " + data.msg);
-                    alert(data.msg);
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'STATUS') {
+                        setUploading(false);
+                        setProgress(0);
+                        setStatus("✅ " + data.msg);
+                        alert(data.msg);
+                    }
+                } catch (err) {
+                    console.error("Error handeling message:", err);
                 }
             };
 
@@ -194,7 +199,6 @@
                 }
             };
 
-            // สร้างคำขอเชื่อมต่อส่งไปหาเซิร์ฟเวอร์
             ws.onopen = async () => {
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
@@ -228,7 +232,6 @@
                     const base64Data = reader.result.split(',')[1];
                     setProgress(90);
                     
-                    // ยิงข้อมูลไฟล์ข้ามผ่าน Data Channel ตรงๆ โดยไม่ผ่านเซิร์ฟเวอร์กลางใดๆ
                     dcRef.current.send(JSON.stringify({
                         type: 'UPLOAD',
                         category: category,
