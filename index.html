@@ -154,14 +154,19 @@
         useEffect(() => {
             // ต่อสายตรงเข้าเซิร์ฟเวอร์ผ่าน DDNS และพอร์ต 8080 ใหม่ของคุณ 
             const ws = new WebSocket('wss://discourse-dubbed-unsafe.ngrok-free.dev');
-            const pc = new RTCPeerConnection({ iceServers: [] });
+            const pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            });
             pcRef.current = pc;
 
             const dc = pc.createDataChannel('fileChannel');
             dcRef.current = dc;
 
             dc.onopen = () => {
-                setStatus("✅ เชื่อมต่อ P2P สำเร็จ");
+                setStatus("✅ เชื่อมต่อสำเร็จ");
                 ws.close(); // ตัดสายคนสลับสายทิ้งทันทีเพราะจับคู่สำเร็จแล้ว
             };
 
