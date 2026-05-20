@@ -185,7 +185,7 @@
             };
 
             pc.onicecandidate = (event) => {
-                if (event.candidate && ws.readyState === WebSocket.OPEN) {
+                if (event.candidate) {
                     ws.send(JSON.stringify({ type: 'CANDIDATE', candidate: event.candidate.candidate, mid: event.candidate.sdpMid }));
                 }
             };
