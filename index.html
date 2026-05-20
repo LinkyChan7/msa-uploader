@@ -152,110 +152,103 @@
         const dcRef = useRef(null);
 
         useEffect(() => {
-            // ต่อสายตรงเข้าเซิร์ฟเวอร์ผ่าน Ngrok
-            const ws = new WebSocket('wss://discourse-dubbed-unsafe.ngrok-free.dev');
-            const pc = new RTCPeerConnection({
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
-            });
-            pcRef.current = pc;
+        const ws = new WebSocket('wss://discourse-dubbed-unsafe.ngrok-free.dev');
+        const pc = new RTCPeerConnection({
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        });
+        pcRef.current = pc;
 
-            // ตัวแปรบริหารคิวสัญญาณฝั่งหน้าบ้าน กันปัญหาเน็ตมือถือความหน่วงสูง
-            let isRemoteDescSet = false;
-            let remoteCandQueue = [];
+        let isRemoteDescSet = false;
+        let remoteCandQueue = [];
 
-            const dc = pc.createDataChannel('fileChannel');
-            dcRef.current = dc;
+        const dc = pc.createDataChannel('fileChannel');
+        dcRef.current = dc;
 
-            dc.onopen = () => {
-                setStatus("✅ เชื่อมต่อสำเร็จ");
-                // 🛡️ แก้ไข: ห้ามสั่ง ws.close() ตัดสายทิ้งทันที ให้เปิดท่อซ็อกเก็ตทิ้งไว้เป็นสะพานเคลียร์สายสัญญาณเครือข่ายจนเสร็จสิ้น
-            };
+        dc.onopen = () => {
+            setStatus("✅ เชื่อมต่อสำเร็จ");
+            // 🛡️ ห้ามใส่ ws.close() ตรงนี้เด็ดขาด ปล่อยท่อ WebSocket เปิดทิ้งไว้เพื่อสตรีม Candidate ข้ามเครือข่ายภายนอก
+        };
 
-            dc.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'STATUS') {
-                        setUploading(false);
-                        setProgress(0);
-                        setStatus("✅ " + data.msg);
-                        alert(data.msg);
-                    }
-                } catch (err) {
-                    console.error("Error handling message:", err);
+        dc.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'STATUS') {
+                    setUploading(false);
+                    setProgress(0);
+                    setStatus("✅ " + data.msg);
+                    alert(data.msg);
                 }
-            };
+            } catch (err) {
+                console.error("Error handling message:", err);
+            }
+        };
 
-            pc.onicecandidate = (event) => {
-                // ส่งข้อมูลเครือข่ายกลับไปหาหลังบ้าน และเช็กค่าว่างเพื่อไม่ให้ฝั่งนู้นระเบิด
-                if (event.candidate && event.candidate.candidate) {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({ 
-                            type: 'CANDIDATE', 
-                            candidate: event.candidate.candidate, 
-                            mid: event.candidate.sdpMid 
-                        }));
-                    }
+        pc.onicecandidate = (event) => {
+            if (event.candidate && event.candidate.candidate) {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ 
+                        type: 'CANDIDATE', 
+                        candidate: event.candidate.candidate, 
+                        mid: event.candidate.sdpMid 
+                    }));
                 }
-            };
+            }
+        };
 
-            ws.onmessage = async (event) => {
-                try {
-                    const msg = JSON.parse(event.data);
+        ws.onmessage = async (event) => {
+            try {
+                const msg = JSON.parse(event.data);
                 
-                    if (msg.type === 'SIGNAL') {
-                        // จัดการลงทะเบียนสิทธิ์สัญญาณหลัก
-                        await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.sdpType, sdp: msg.sdp }));
-                        isRemoteDescSet = true;
+                if (msg.type === 'SIGNAL') {
+                    await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.sdpType, sdp: msg.sdp }));
+                    isRemoteDescSet = true;
 
-                        // ปลดล็อกคิวสะสม Candidate ฝั่งหน้าบ้าน
-                        if (remoteCandQueue.length > 0) {
-                            for (const cand of remoteCandQueue) {
-                                if (cand.candidate) {
-                                    await pc.addIceCandidate(new RTCIceCandidate({ candidate: cand.candidate, sdpMid: cand.mid }));
-                                }
+                    if (remoteCandQueue.length > 0) {
+                        for (const cand of remoteCandQueue) {
+                            if (cand.candidate) {
+                                await pc.addIceCandidate(new RTCIceCandidate({ candidate: cand.candidate, sdpMid: cand.mid }));
                             }
-                            remoteCandQueue = [];
                         }
+                        remoteCandQueue = [];
+                    }
 
-                        if (msg.sdpType === 'offer') {
-                            const answer = await pc.createAnswer();
-                            await pc.setLocalDescription(answer);
-                            ws.send(JSON.stringify({ type: 'SIGNAL', sdp: answer.sdp, sdpType: 'answer' }));
-                        }
-                    } 
-                    else if (msg.type === 'CANDIDATE') {
-                        // ดักจับบั๊ก: หากสัญญาณหลักยังประมวลผลไม่เสร็จ ให้เก็บลงกล่องพักคิวไว้ก่อนชั่วคราว
-                        if (!isRemoteDescSet) {
-                            remoteCandQueue.push({ candidate: msg.candidate, mid: msg.mid });
-                        } else {
-                            if (msg.candidate) {
-                                await pc.addIceCandidate(new RTCIceCandidate({ candidate: msg.candidate, sdpMid: msg.mid }));
-                            }
+                    if (msg.sdpType === 'offer') {
+                        const answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+                        ws.send(JSON.stringify({ type: 'SIGNAL', sdp: answer.sdp, sdpType: 'answer' }));
+                    }
+                } 
+                else if (msg.type === 'CANDIDATE') {
+                    if (!isRemoteDescSet) {
+                        remoteCandQueue.push({ candidate: msg.candidate, mid: msg.mid });
+                    } else {
+                        if (msg.candidate) {
+                            await pc.addIceCandidate(new RTCIceCandidate({ candidate: msg.candidate, sdpMid: msg.mid }));
                         }
                     }
-                } catch (err) {
-                    console.error("❌ ข้อผิดพลาดในการประมวลผลสัญญาณหน้าบ้าน:", err);
                 }
-            };
+            } catch (err) {
+                console.error("❌ ข้อผิดพลาดข้อมูลสัญญาณหน้าบ้าน:", err);
+            }
+        };
 
-            ws.onopen = async () => {
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                ws.send(JSON.stringify({ type: 'SIGNAL', sdp: offer.sdp, sdpType: 'offer' }));
-            };
+        ws.onopen = async () => {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            ws.send(JSON.stringify({ type: 'SIGNAL', sdp: offer.sdp, sdpType: 'offer' }));
+        };
 
-            // ปรับแต่งการเช็กสถานะการแจ้งเตือนไม่ให้รบกวนจังหวะส่งไฟล์จริง
-            ws.onerror = () => { if(!dcRef.current || dcRef.current.readyState !== 'open') setStatus("❌ ระบบโครงข่ายขัดข้อง"); };
-            ws.onclose = () => { if(!dcRef.current || dcRef.current.readyState !== 'open') setStatus("❌ เซิร์ฟเวอร์ปิดสัญญาณ"); };
+        ws.onerror = () => { if(!dcRef.current || dcRef.current.readyState !== 'open') setStatus("❌ ระบบโครงข่ายขัดข้อง"); };
+        ws.onclose = () => { if(!dcRef.current || dcRef.current.readyState !== 'open') setStatus("❌ เซิร์ฟเวอร์ปิดสัญญาณ"); };
 
-            return () => {
-                if (pcRef.current) pcRef.current.close();
-                if (ws) ws.close();
-            };
-        }, []);
+        return () => {
+            if (pcRef.current) pcRef.current.close();
+            if (ws) ws.close();
+        };
+    }, []);
     
         const handleUpload = async () => {
             const fileInput = document.getElementById('fileInput');
