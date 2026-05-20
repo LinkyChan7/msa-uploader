@@ -219,30 +219,63 @@
             
             if (!file) return alert("กรุณาเลือกไฟล์ PDF ที่ต้องการส่ง");
             if (!dcRef.current || dcRef.current.readyState !== 'open') {
-                return alert("ไม่สามารถส่งไฟล์ได้ เนื่องจากการเชื่อมต่อหลุด");
+                return alert("ไม่สามารถส่งไฟล์ได้ เนื่องจากในการเชื่อมต่อหลุด");
             }
 
             setUploading(true);
-            setStatus("🚀 กำลังส่งไฟล์ตรงเข้าหาเซิร์ฟเวอร์...");
-            setProgress(50);
+            setStatus("🚀 กำลังเตรียมหั่นไฟล์และส่งข้อมูล...");
+            setProgress(0);
 
             try {
                 const reader = new FileReader();
                 reader.onload = () => {
                     const base64Data = reader.result.split(',')[1];
-                    setProgress(90);
                     
+                    // เรียกใช้งานระบบหั่นส่งทีละชิ้น (Chunk Size 16KB สำหรับ WebRTC)
+                    const CHUNK_SIZE = 16384; 
+                    let offset = 0;
+                    const totalBytes = base64Data.length;
+
+                    // สเต็ปที่ 1: ส่งสัญญาณเริ่มอัปโหลด (บอกชื่อไฟล์และหมวดหมู่หลังบ้าน)
                     dcRef.current.send(JSON.stringify({
-                        type: 'UPLOAD',
+                        type: 'START_UPLOAD',
                         category: category,
-                        fileName: file.name,
-                        fileData: base64Data
+                        fileName: file.name
                     }));
 
-                    setProgress(100);
-                    if (fileInput) fileInput.value = ""; 
+                    // สเต็ปที่ 2: วนลูปสตรีมชิ้นส่วนส่งผ่าน Data Channel
+                    function sendNextChunk() {
+                        if (offset < totalBytes) {
+                            const chunk = base64Data.slice(offset, offset + CHUNK_SIZE);
+                            
+                            dcRef.current.send(JSON.stringify({
+                                type: 'CHUNK',
+                                chunkData: chunk
+                            }));
+
+                            offset += CHUNK_SIZE;
+                            
+                            // คำนวณความคืบหน้า % แถบวิ่งบน React UI
+                            const currentProgress = Math.min(100, (offset / totalBytes) * 100);
+                            setProgress(Math.floor(currentProgress));
+
+                            // หน่วงเวลา 5 มิลลิวินาที ให้บัฟเฟอร์เคลียร์ตัวแล้วค่อยส่งชิ้นถัดไป (กันท่อแตก)
+                            setTimeout(sendNextChunk, 5);
+                        } else {
+                            // สเต็ปที่ 3: เมื่อส่งชิ้นส่วนครบถ้วน ส่งสัญญาณปิดท้ายให้หลังบ้านประกอบไฟล์เขียนลงดิสก์
+                            dcRef.current.send(JSON.stringify({ type: 'END_UPLOAD' }));
+                            setStatus("💾 เซิร์ฟเวอร์กำลังบันทึกไฟล์...");
+                            if (fileInput) fileInput.value = "";
+                        }
+                    }
+
+                    // สั่งให้ลูปเริ่มทำงาน
+                    sendNextChunk();
                 };
+                
+                // อ่านไฟล์ PDF
                 reader.readAsDataURL(file);
+
             } catch (error) {
                 setUploading(false);
                 setProgress(0);
@@ -250,7 +283,6 @@
                 alert("เกิดข้อผิดพลาด: " + error.message);
             }
         };
-      
         const catNames = { qt: 'Quotation (ใบเสนอราคา)', po: 'Purchase Order (ใบสั่งซื้อ)', inv: 'Invoice (ใบแจ้งหนี้)' };
 
         return (
