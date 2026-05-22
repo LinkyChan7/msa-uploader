@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IMASEN File Uploader System</title>
+    <title>Doc2Drive Uploader System</title>
     <script src="./libs/react.min.js"></script>
     <script src="./libs/react-dom.min.js"></script>
     <script src="./libs/three.min.js"></script>
@@ -323,7 +323,7 @@
                 </div>
                 <div id="ui-layer">
                     <div className="header">
-                        <h1 style={{ margin: '0 0 5px 0', fontSize: '28px' }}>IMASEN FILE SYSTEM</h1>
+                        <h1 style={{ margin: '0 0 5px 0', fontSize: '28px' }}>Doc2Drive</h1>
                         <p style={{ margin: 0, opacity: 0.8 }}>คลิกเลือกประเภทกระเป๋าเอกสาร 3D เพื่อเปลี่ยนหมวดหมู่จัดเก็บเอกสาร</p>
                     </div>
                     
@@ -340,7 +340,7 @@
                         </div>
                         <input type="file" id="fileInput" accept=".pdf" />
                         <button onClick={handleUpload} disabled={uploading || !status.includes('✅')}>
-                            {uploading ? 'กำลังส่งข้อมูล...' : 'SEND TO IMASEN'}
+                            {uploading ? 'กำลังส่งข้อมูล...' : 'SEND TO Drive'}
                         </button>
                         
                         {uploading && (
