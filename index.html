@@ -408,7 +408,7 @@
                     <div className="header-wrapper">
                         <img src="./Doc2Drive.png" className="header-logo" alt="Doc2Drive Logo" onError={(e)=>{e.target.style.display='none';}} />
                         <div className="header">
-                            <h1 style={{ margin: '0 0 3px 0', fontSize: '28px', lineHeight: '1.2' }}>Doc2Drive Enterprise</h1>
+                            <h1 style={{ margin: '0 0 3px 0', fontSize: '32px', lineHeight: '1.2' }}>Doc2Drive Enterprise</h1>
                             <p style={{ margin: 0, opacity: 0.8, fontSize: '14px' }}>พนักงานผู้ใช้งาน: <strong>{userName || 'ยังไม่ได้เข้าสู่ระบบ'}</strong></p>
                             {/* ปุ่มเปิดดูประวัติสไตล์โมเดิร์น */}
                             <button className="btn-history" onClick={() => setShowHistory(true)}>📊 ดูประวัติคลังเก็บเอกสาร</button>
@@ -429,7 +429,7 @@
                         </div>
                         <input type="file" id="fileInput" accept=".pdf" disabled={!status.includes('✅')} />
                         <button onClick={handleUpload} disabled={uploading || !status.includes('✅')}>
-                            {uploading ? 'กำลังส่งข้อมูล...' : 'SEND TO DRIVE P2P'}
+                            {uploading ? 'กำลังส่งข้อมูล...' : 'SEND TO DRIVE'}
                         </button>
                         
                         {uploading && (
