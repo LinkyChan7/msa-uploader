@@ -11,26 +11,45 @@
     <script src="./libs/gsap.min.js"></script>
     <script src="./libs/GLTFLoader.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #adc5d8; }
-        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
-        #ui-layer { position: relative; z-index: 2; pointer-events: none; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; padding: 40px; color: #76563d; box-sizing: border-box; }
+        body { margin: 0; overflow-x: hidden; font-family: 'Segoe UI', sans-serif; background: #adc5d8; }
+        #canvas-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        #ui-layer { position: relative; z-index: 2; pointer-events: none; min-height: 100vh; display: flex; flex-direction: column; justify-content: space-between; padding: 40px; color: #76563d; box-sizing: border-box; }
         .upload-card { 
             pointer-events: auto; background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(15px);
             padding: 30px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.2); width: 350px;
             box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
         }
+        .login-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: linear-gradient(135deg, #adc5d8 0%, #cbdce9 100%);
+            z-index: 999; display: flex; justify-content: center; align-items: center;
+        }
+        .login-card {
+            background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            width: 380px; text-align: center; border: 1px solid rgba(255,255,255,0.8);
+        }
+        .login-card input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; }
         .category-label { font-size: 24px; font-weight: bold; color: #76563d; margin-bottom: 5px; text-transform: uppercase; }
         .server-status { font-size: 13px; font-weight: 500; margin-bottom: 15px; }
         input[type="file"] { background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(0,0,0,0.1); padding: 10px; width: 100%; border-radius: 8px; color: #333; margin: 15px 0; box-sizing: border-box; }
         button { 
             width: 100%; padding: 15px; border-radius: 12px; border: none; 
             background: linear-gradient(45deg, #516f8e, #00c0aa); color: white; font-weight: bold; cursor: pointer;
-            transition: transform 0.2s, background 0.2s;
+            transition: transform 0.2s, background 0.2s; font-size: 16px;
         }
         button:disabled { background: #999 !important; cursor: not-allowed; }
         button:active { transform: scale(0.95); }
         .status-bar { height: 6px; background: rgba(0,0,0,0.1); margin-top: 20px; border-radius: 3px; overflow: hidden; }
         .status-fill { height: 100%; background: #00c0aa; width: 0%; transition: width 0.3s ease-out; }
+        
+        /* 📊 Dashboard Table CSS */
+        .dashboard-container {
+            pointer-events: auto; background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(10px);
+            padding: 20px; border-radius: 20px; margin-top: 40px; max-width: 800px; width: 100%;
+            border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 4px 20px rgba(0,0,0,0.05); box-sizing: border-box;
+        }
+        .dashboard-table { width: 100%; border-collapse: collapse; text-align: left; margin-top: 10px; }
+        .dashboard-table th, .dashboard-table td { padding: 10px; font-size: 13px; border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .dashboard-table th { color: #555; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -40,7 +59,7 @@
 <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    // --- ส่วนของ Three.js Engine ---
+    // --- ส่วนของ Three.js Engine ดั้งเดิมคงเดิมไว้ครอบคลุมข้ามโพสิชัน ---
     const ThreeScene = ({ selectedCategory, onSelect, onPosUpdate }) => {
         const mountRef = useRef(null);
 
@@ -52,8 +71,6 @@
             mountRef.current.appendChild(renderer.domElement);
 
             const loader = new THREE.GLTFLoader();
-
-            // แสงไฟระบบ Cinematic สำหรับส่องโมเดลกระเป๋า
             const light = new THREE.DirectionalLight(0xffffff, 2);
             light.position.set(10, 10, 10);
             scene.add(light);
@@ -66,36 +83,31 @@
                 loader.load(`./models/${cat}.glb`, 
                     (gltf) => {
                         const model = gltf.scene;
-                        model.position.x = (i - 1) * 9; // วางระยะห่างโมเดลกระเป๋าให้เหมาะสม
-                        model.position.y = 1.5;
+                        model.position.x = (i - 1) * 9; 
+                        model.position.y = 1.2;
                         model.userData = { id: cat };
                         scene.add(model);
-                        models[cat] = model; // บันทึกลง Object เมื่อโหลดเสร็จแล้วจริง ๆ
+                        models[cat] = model; 
                         model.scale.set(8, 8, 8);
                     },
                     undefined,
-                    (error) => {
-                        console.error('Error loading model:', error);
-                    }
+                    (error) => console.error('Error loading model:', error)
                 );
             });
 
             camera.position.z = 10;
 
-            // Animation Loop ปรับปรุงใหม่เพื่อป้องกันการพัง (Crash)
             let animationFrameId;
             const animate = () => {
                 animationFrameId = requestAnimationFrame(animate);
-                
                 categories.forEach(key => {
                     const m = models[key];
-                    if (!m) return; // 🛡️ ดักพัง: ถ้าโมเดลชิ้นนี้ยังโหลดไม่เสร็จ ให้ข้ามลูปนี้ไปก่อน
+                    if (!m) return; 
                     
                     if (key === selectedCategory) {
                         m.rotation.y += 0.01;
                         m.scale.set(10, 10, 10);
                         
-                        // คำนวณพิกัด 3D ออกมาเป็น 2D หน้าจอเบราว์เซอร์
                         const vector = m.position.clone();
                         vector.project(camera);
                         const x = (vector.x + 1) * window.innerWidth / 2;
@@ -110,7 +122,6 @@
             };
             animate();
 
-            // ระบบตรวจจับการคลิกเลือกโมเดลกระเป๋าเอกสาร 3 มิติ
             const raycaster = new THREE.Raycaster();
             const mouse = new THREE.Vector2();
 
@@ -128,7 +139,6 @@
 
             window.addEventListener('click', onClick);
             
-            // Cleanup เคลียร์แรมและหยุดแอนิเมชันให้หมดเมื่อเปลี่ยน Component
             return () => {
                 window.removeEventListener('click', onClick);
                 cancelAnimationFrame(animationFrameId);
@@ -141,114 +151,141 @@
         return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />;
     };
 
-    // --- ส่วนของ UI React
+    // --- ส่วนของ UI React อัปเกรดระบบ Secure Gate และ Live Dashboard ---
     const App = () => {
+        const [isLoggedIn, setIsLoggedIn] = useState(false);
+        const [empIdInput, setEmpIdInput] = useState('');
+        const [passwordInput, setPasswordInput] = useState('');
+        const [loginError, setLoginError] = useState('');
+
         const [category, setCategory] = useState('po');
         const [uiPos, setUiPos] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 }); 
-        const [status, setStatus] = useState("⏳ กำลังเชื่อมต่อเซิร์ฟเวอร์...");
+        const [status, setStatus] = useState("⏳ รอยืนยันตัวตน...");
         const [progress, setProgress] = useState(0);
         const [uploading, setUploading] = useState(false);
+        const [userName, setUserName] = useState('');
+        const [logs, setLogs] = useState([]);
+
+        const wsRef = useRef(null);
         const pcRef = useRef(null);
         const dcRef = useRef(null);
 
-        useEffect(() => {
-        const ws = new WebSocket('wss://discourse-dubbed-unsafe.ngrok-free.dev');
-        const pc = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        });
-        pcRef.current = pc;
+        // 🎯 สคริปต์ผูกลิงก์อัตโนมัติจากเซิร์ฟเวอร์ Ngrok ของคุณ
+        const handleLogin = () => {
+            if (!empIdInput || !passwordInput) return alert("กรุณากรอกไอดีพนักงานและรหัสผ่าน");
+            
+            setLoginError('');
+            // เชื่อมต่อด้วยโดเมนหลักผ่านช่อง Ngrok พร้อมส่งพารามิเตอร์รหัสผ่านไปตรวจเช็คสิทธิ์ความปลอดภัย
+            const wsUrl = `wss://discourse-dubbed-unsafe.ngrok-free.dev?emp_id=${empIdInput}&password=${passwordInput}`;
+            const ws = new WebSocket(wsUrl);
+            wsRef.current = ws;
 
-        let isRemoteDescSet = false;
-        let remoteCandQueue = [];
+            const pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            });
+            pcRef.current = pc;
 
-        const dc = pc.createDataChannel('fileChannel');
-        dcRef.current = dc;
+            let isRemoteDescSet = false;
+            let remoteCandQueue = [];
 
-        dc.onopen = () => {
-            setStatus("✅ เชื่อมต่อสำเร็จ");
-            // 🛡️ ห้ามใส่ ws.close() ตรงนี้เด็ดขาด ปล่อยท่อ WebSocket เปิดทิ้งไว้เพื่อสตรีม Candidate ข้ามเครือข่ายภายนอก
-        };
+            const dc = pc.createDataChannel('fileChannel');
+            dcRef.current = dc;
 
-        dc.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'STATUS') {
-                    setUploading(false);
-                    setProgress(0);
-                    setStatus("✅ " + data.msg);
-                    alert(data.msg);
+            dc.onopen = () => {
+                setStatus("✅ ปลอดภัย P2P ออนไลน์");
+                // ดึงข้อมูล Dashboard ล็อตแรกทันทีเมื่อออนไลน์สำเร็จ
+                ws.send(JSON.stringify({ type: 'REQUEST_DASHBOARD' }));
+            };
+
+            dc.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'STATUS') {
+                        setUploading(false);
+                        setProgress(0);
+                        setStatus("✅ " + data.msg);
+                        alert(data.msg);
+                        // ทุกครั้งที่อัปโหลดสำเร็จ ให้ขอประวัติฐานข้อมูลอัปเดต Dashboard สดทันที
+                        ws.send(JSON.stringify({ type: 'REQUEST_DASHBOARD' }));
+                    }
+                } catch (err) {
+                    console.error("Error handling message:", err);
                 }
-            } catch (err) {
-                console.error("Error handling message:", err);
-            }
-        };
+            };
 
-        pc.onicecandidate = (event) => {
-            if (event.candidate && event.candidate.candidate) {
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ 
-                        type: 'CANDIDATE', 
-                        candidate: event.candidate.candidate, 
-                        mid: event.candidate.sdpMid 
-                    }));
+            pc.onicecandidate = (event) => {
+                if (event.candidate && event.candidate.candidate) {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ 
+                            type: 'CANDIDATE', 
+                            candidate: event.candidate.candidate, 
+                            mid: event.candidate.sdpMid 
+                        }));
+                    }
                 }
-            }
-        };
+            };
 
-        ws.onmessage = async (event) => {
-            try {
-                const msg = JSON.parse(event.data);
-                
-                if (msg.type === 'SIGNAL') {
-                    await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.sdpType, sdp: msg.sdp }));
-                    isRemoteDescSet = true;
+            ws.onmessage = async (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    
+                    if (msg.type === 'AUTH_RESULT') {
+                        if (msg.success) {
+                            setUserName(msg.name);
+                            setIsLoggedIn(true);
+                            setStatus("⏳ กำลังเปิดท่อสตรีม P2P...");
+                            
+                            // ส่ง Offer แลกเปลี่ยนสัญญาณ WebRTC ต่อเนื่องทันที
+                            const offer = await pc.createOffer();
+                            await pc.setLocalDescription(offer);
+                            ws.send(JSON.stringify({ type: 'SIGNAL', sdp: offer.sdp, sdpType: 'offer' }));
+                        } else {
+                            setLoginError(msg.msg);
+                            ws.close();
+                        }
+                    }
+                    else if (msg.type === 'SIGNAL') {
+                        await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.sdpType, sdp: msg.sdp }));
+                        isRemoteDescSet = true;
 
-                    if (remoteCandQueue.length > 0) {
-                        for (const cand of remoteCandQueue) {
-                            if (cand.candidate) {
-                                await pc.addIceCandidate(new RTCIceCandidate({ candidate: cand.candidate, sdpMid: cand.mid }));
+                        if (remoteCandQueue.length > 0) {
+                            for (const cand of remoteCandQueue) {
+                                if (cand.candidate) {
+                                    await pc.addIceCandidate(new RTCIceCandidate({ candidate: cand.candidate, sdpMid: cand.mid }));
+                                }
+                            }
+                            remoteCandQueue = [];
+                        }
+
+                        if (msg.sdpType === 'offer') {
+                            const answer = await pc.createAnswer();
+                            await pc.setLocalDescription(answer);
+                            ws.send(JSON.stringify({ type: 'SIGNAL', sdp: answer.sdp, sdpType: 'answer' }));
+                        }
+                    } 
+                    else if (msg.type === 'CANDIDATE') {
+                        if (!isRemoteDescSet) {
+                            remoteCandQueue.push({ candidate: msg.candidate, mid: msg.mid });
+                        } else {
+                            if (msg.candidate) {
+                                await pc.addIceCandidate(new RTCIceCandidate({ candidate: msg.candidate, sdpMid: msg.mid }));
                             }
                         }
-                        remoteCandQueue = [];
                     }
-
-                    if (msg.sdpType === 'offer') {
-                        const answer = await pc.createAnswer();
-                        await pc.setLocalDescription(answer);
-                        ws.send(JSON.stringify({ type: 'SIGNAL', sdp: answer.sdp, sdpType: 'answer' }));
+                    else if (msg.type === 'DASHBOARD_DATA') {
+                        setLogs(msg.logs); // รับบันทึกผลลง State ไปวาดลง Dashboard Table
                     }
-                } 
-                else if (msg.type === 'CANDIDATE') {
-                    if (!isRemoteDescSet) {
-                        remoteCandQueue.push({ candidate: msg.candidate, mid: msg.mid });
-                    } else {
-                        if (msg.candidate) {
-                            await pc.addIceCandidate(new RTCIceCandidate({ candidate: msg.candidate, sdpMid: msg.mid }));
-                        }
-                    }
+                } catch (err) {
+                    console.error("❌ ข้อผิดพลาดข้อมูลสัญญาณหน้าบ้าน:", err);
                 }
-            } catch (err) {
-                console.error("❌ ข้อผิดพลาดข้อมูลสัญญาณหน้าบ้าน:", err);
-            }
-        };
+            };
 
-        ws.onopen = async () => {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            ws.send(JSON.stringify({ type: 'SIGNAL', sdp: offer.sdp, sdpType: 'offer' }));
+            ws.onerror = () => setStatus("❌ ระบบโครงข่ายขัดข้อง");
+            ws.onclose = () => { if(!dcRef.current || dcRef.current.readyState !== 'open') setStatus("❌ เซิร์ฟเวอร์ปิดสัญญาณ"); };
         };
-
-        ws.onerror = () => { if(!dcRef.current || dcRef.current.readyState !== 'open') setStatus("❌ ระบบโครงข่ายขัดข้อง"); };
-        ws.onclose = () => { if(!dcRef.current || dcRef.current.readyState !== 'open') setStatus("❌ เซิร์ฟเวอร์ปิดสัญญาณ"); };
-
-        return () => {
-            if (pcRef.current) pcRef.current.close();
-            if (ws) ws.close();
-        };
-    }, []);
     
         const handleUpload = async () => {
             const fileInput = document.getElementById('fileInput');
@@ -297,12 +334,9 @@
                             if (fileInput) fileInput.value = "";
                         }
                     }
-
                     sendNextChunk();
                 };
-            
                 reader.readAsDataURL(file);
-
             } catch (error) {
                 setUploading(false);
                 setProgress(0);
@@ -310,10 +344,26 @@
                 alert("เกิดข้อผิดพลาด: " + error.message);
             }
         };
+
         const catNames = { qt: 'Quotation (ใบเสนอราคา)', po: 'Purchase Order (ใบสั่งซื้อ)', inv: 'Invoice (ใบแจ้งหนี้)' };
 
         return (
             <>
+                {/* 🔒 ด่านเปิดหน้าจอล็อกอินตรวจสิทธิ์พนักงานก่อนเข้าสู่มิติสามมิติ */}
+                {!isLoggedIn && (
+                    <div className="login-overlay">
+                        <div className="login-card">
+                            <h2 style={{ color: '#516f8e', margin: '0 0 10px 0' }}>🔒 Doc2Drive Gateway</h2>
+                            <p style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>กรุณาระบุข้อมูลพนักงานเพื่อเปิดสิทธิ์การฝากไฟล์ P2P</p>
+                            <input type="text" placeholder="รหัสพนักงาน (เช่น IMASEN001)" value={empIdInput} onChange={e => setEmpIdInput(e.target.value)} />
+                            <input type="password" placeholder="รหัสผ่านความปลอดภัย" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+                            {loginError && <p style={{ color: '#cc0000', fontSize: '13px', fontWeight: 'bold' }}>❌ {loginError}</p>}
+                            <button onClick={handleLogin} style={{ marginTop: '15px' }}>ยืนยันตัวตนเข้าสู่ระบบ</button>
+                        </div>
+                    </div>
+                )}
+
+                {/* 🎨 ระบบมิติ Three.js Engine แสดงผลด้านหลังหลังล็อกอินผ่าน */}
                 <div id="canvas-container">
                     <ThreeScene 
                         selectedCategory={category} 
@@ -321,10 +371,11 @@
                         onPosUpdate={setUiPos} 
                     />
                 </div>
+
                 <div id="ui-layer">
                     <div className="header">
-                        <h1 style={{ margin: '0 0 5px 0', fontSize: '28px' }}>Doc2Drive</h1>
-                        <p style={{ margin: 0, opacity: 0.8 }}>คลิกเลือกประเภทกระเป๋าเอกสาร 3D เพื่อเปลี่ยนหมวดหมู่จัดเก็บเอกสาร</p>
+                        <h1 style={{ margin: '0 0 5px 0', fontSize: '28px' }}>Doc2Drive Enterprise</h1>
+                        <p style={{ margin: 0, opacity: 0.8 }}>พนักงานผู้ใช้งาน: <strong>{userName || 'ยังไม่ได้เข้าสู่ระบบ'}</strong></p>
                     </div>
                     
                     <div className="upload-card" style={{
@@ -338,9 +389,9 @@
                         <div className="server-status" style={{ color: status.includes('❌') ? '#cc0000' : (status.includes('✅') ? '#2d5a27' : '#76563d') }}>
                             {status}
                         </div>
-                        <input type="file" id="fileInput" accept=".pdf" />
+                        <input type="file" id="fileInput" accept=".pdf" disabled={!status.includes('✅')} />
                         <button onClick={handleUpload} disabled={uploading || !status.includes('✅')}>
-                            {uploading ? 'กำลังส่งข้อมูล...' : 'SEND TO Drive'}
+                            {uploading ? 'กำลังส่งข้อมูล...' : 'SEND TO DRIVE P2P'}
                         </button>
                         
                         {uploading && (
@@ -348,6 +399,41 @@
                                 <div className="status-fill" style={{ width: `${progress}%` }}></div>
                             </div>
                         )}
+                    </div>
+
+                    {/* 📊 ส่วนแสดงผลรายงาน Dashboard ด้านล่างสุด ดึงค่าสดจาก SQLite */}
+                    <div className="dashboard-container">
+                        <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: '#516f8e' }}>📊 บันทึกประวัติคลังเก็บเอกสารล่าสุด (Live Database Dashboard)</h3>
+                        <table className="dashboard-table">
+                            <thead>
+                                <tr>
+                                    <th>วันเวลาที่เซิร์ฟเวอร์</th>
+                                    <th>พนักงาน</th>
+                                    <th>ชื่อไฟล์เอกสาร</th>
+                                    <th>หมวดหมู่</th>
+                                    <th>ขนาด (MB)</th>
+                                    <th>สถานะ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {logs.length === 0 ? (
+                                    <tr><td colSpan="6" style={{ textAlign: 'center', color: '#999' }}>ไม่มีประวัติการอัปโหลดไฟล์ในระบบในขณะนี้</td></tr>
+                                ) : (
+                                    logs.map((log) => (
+                                        <tr key={log.id}>
+                                            <td>{log.timestamp}</td>
+                                            <td><strong>{log.emp_id}</strong></td>
+                                            <td>{log.file_name}</td>
+                                            <td><span style={{ fontWeight: 'bold', color: '#516f8e' }}>[{log.category.toUpperCase()}]</span></td>
+                                            <td>{log.file_size_mb} MB</td>
+                                            <td style={{ fontWeight: 'bold', color: log.status === 'SUCCESS' ? '#2d5a27' : '#cc0000' }}>
+                                                {log.status === 'SUCCESS' ? '🟢 สำเร็จ' : '🔴 ปฏิเสธ'}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </>
